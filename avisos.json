@@ -1,0 +1,14 @@
+{
+  "moneda": "EUR",
+  "oro": {
+    "activo": true,
+    "caida_porcentaje": 1,
+    "baja_de": null,
+    "unidad": "onza"
+  },
+  "bitcoin": {
+    "activo": true,
+    "caida_porcentaje": 3,
+    "baja_de": null
+  }
+}

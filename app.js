@@ -8,7 +8,7 @@ const ASSETS = {
 const GOLD_URL = 'https://api.gold-api.com/price/XAU';          // USD/onza
 const BTC_URL = 'https://api.gold-api.com/price/BTC';           // USD (respaldo si falla el directo)
 const BTC_WS = 'wss://ws-feed.exchange.coinbase.com';           // precio de bitcoin en directo
-const BTC_CANDLES = 'https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=300';
+const BTC_CANDLES = 'https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=';
 const FX_URL = 'https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR';
 const POLL_MS = 10_000;           // oro (y bitcoin de respaldo)
 const SAMPLE_MS = 10_000;         // un punto en el historial cada 10 s
@@ -16,6 +16,23 @@ const MAX_POINTS = 1500;          // al superarlo, se aclaran los puntos más an
 const DAY_MS = 24 * 3600_000;
 const GRAMS_PER_OZ = 31.1034768;
 const STORE_KEY = 'alertaOro.v3';
+const MIN = 60_000, HOUR = 3600_000;
+
+// Periodos del gráfico: duración, tamaño de cada vela y granularidad de Coinbase (s)
+const RANGES = {
+  '1D': { ms: DAY_MS, bucket: 15 * MIN, gran: 900, label: 'en 24 h', foot: 'Últimas 24 h' },
+  '1S': { ms: 7 * DAY_MS, bucket: 2 * HOUR, gran: 3600, label: 'en 7 días', foot: 'Última semana' },
+  '1M': { ms: 30 * DAY_MS, bucket: 12 * HOUR, gran: 21600, label: 'en 30 días', foot: 'Último mes' },
+  '6M': { ms: 182 * DAY_MS, bucket: 3 * DAY_MS, gran: 86400, label: 'en 6 meses', foot: 'Últimos 6 meses' },
+};
+
+// Repositorio de GitHub donde el vigilante guarda los datos (rama "datos")
+const REPO = (() => {
+  const h = location.hostname, seg = location.pathname.split('/')[1];
+  return h.endsWith('.github.io') && seg ? h.split('.')[0] + '/' + seg : 'foskyflow/App';
+})();
+const DATA_BASE = `https://raw.githubusercontent.com/${REPO}/datos/`;
+const CONFIG_EDIT_URL = `https://github.com/${REPO}/edit/main/avisos.json`;
 
 const $ = id => document.getElementById(id);
 
@@ -23,7 +40,7 @@ const $ = id => document.getElementById(id);
 const newAsset = code => ({ useBelow: false, belowUsd: null, usePct: true, pct: ASSETS[code].defPct,
                             history: [], peak: null, belowArmed: true }); // precios en USD (oro: por onza)
 const defaults = () => ({
-  settings: { currency: 'EUR', unit: 'oz', sound: true, wake: false },
+  settings: { currency: 'EUR', unit: 'oz', sound: true, wake: false, chart: 'candles', range: '1D' },
   view: 'XAU',
   assets: { XAU: newAsset('XAU'), BTC: newAsset('BTC') },
   alerts: [],        // { t, code, kind: 'pct' | 'below', msg }
@@ -101,6 +118,14 @@ function fmt(code, p, withUnit = true) {
 }
 const pctStr = (v, d = 2) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
 const hhmm = t => new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+const dayMonth = t => new Date(t).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+const since = t => (Date.now() - t < DAY_MS && new Date(t).getDate() === new Date().getDate() ? 'las ' + hhmm(t) : 'el ' + dayMonth(t));
+function stamp(t) {
+  const r = state.settings.range;
+  if (r === '1D') return hhmm(t);
+  if (r === '1S') return new Date(t).toLocaleDateString('es-ES', { weekday: 'short' }) + ' ' + hhmm(t);
+  return dayMonth(t);
+}
 
 // ============ Recepción de precios ============
 function onPrice(code, p, extra = {}) {
@@ -169,18 +194,60 @@ function retryBtc() {
   wsRetry = Math.min(wsRetry * 2, 30_000);
 }
 
-// Historial de las últimas 24 h de bitcoin para el gráfico
-async function seedBtcHistory() {
+// Velas de bitcoin (Coinbase) para cada periodo
+const btcCandles = {};             // periodo -> { t, rows: [{ t, o, h, l, c }] }
+async function loadBtcCandles(range, force) {
+  const c = btcCandles[range];
+  if (!force && c && Date.now() - c.t < 5 * MIN) return;
   try {
-    const rows = await getJson(BTC_CANDLES);       // [tiempo(s), mín, máx, apertura, cierre, volumen]
-    const pts = rows.map(r => ({ t: r[0] * 1000, p: r[4] })).filter(x => x.t > Date.now() - DAY_MS);
-    if (!pts.length) return;
-    pts.sort((x, y) => x.t - y.t);
-    const h = state.assets.BTC.history;
-    const lastSeed = pts[pts.length - 1].t;
-    state.assets.BTC.history = pts.concat(h.filter(x => x.t > lastSeed));
+    const rows = await getJson(BTC_CANDLES + RANGES[range].gran);   // [tiempo(s), mín, máx, apertura, cierre, vol]
+    btcCandles[range] = { t: Date.now(),
+      rows: rows.map(r => ({ t: r[0] * 1000, l: r[1], h: r[2], o: r[3], c: r[4] })).sort((a, b) => a.t - b.t) };
     scheduleRender();
-  } catch (_) { /* el gráfico se irá llenando en directo */ }
+  } catch (_) { /* se usa el historial recogido en directo */ }
+}
+
+// Historial y estado que guarda el vigilante en segundo plano
+let remote = { hist: null, histT: 0, estado: null, estadoT: 0 };
+async function loadRemote(force) {
+  const now = Date.now();
+  if (force || now - remote.histT > 5 * MIN) {
+    remote.histT = now;
+    try { remote.hist = await getJson(DATA_BASE + 'historial.json?t=' + Math.floor(now / MIN)); scheduleRender(); } catch (_) {}
+  }
+  if (force || now - remote.estadoT > MIN) {
+    remote.estadoT = now;
+    try { remote.estado = await getJson(DATA_BASE + 'estado.json?t=' + Math.floor(now / MIN)); } catch (_) { remote.estado = null; }
+    renderBackground();
+  }
+}
+
+// Construye las velas del periodo elegido juntando todas las fuentes
+function buildSeries(code) {
+  const R = RANGES[state.settings.range], now = Date.now(), from = now - R.ms;
+  let items = [];
+  if (code === 'BTC' && btcCandles[state.settings.range]) {
+    items = btcCandles[state.settings.range].rows.slice();
+  } else if (remote.hist && remote.hist[code]) {
+    items = remote.hist[code].map(([t, p]) => ({ t, o: p, h: p, l: p, c: p }));
+  }
+  const lastT = items.length ? items[items.length - 1].t : -Infinity;
+  for (const pt of state.assets[code].history) {
+    if (pt.t > lastT) items.push({ t: pt.t, o: pt.p, h: pt.p, l: pt.p, c: pt.p });
+  }
+  const lp = live[code].price;
+  if (lp && live[code].t > lastT) items.push({ t: live[code].t, o: lp, h: lp, l: lp, c: lp });
+  items.sort((a, b) => a.t - b.t);
+
+  const out = [];
+  for (const it of items) {
+    if (it.t < from - R.bucket) continue;
+    const k = Math.floor(it.t / R.bucket) * R.bucket;
+    const cur = out[out.length - 1];
+    if (cur && cur.t === k) { cur.h = Math.max(cur.h, it.h); cur.l = Math.min(cur.l, it.l); cur.c = it.c; }
+    else out.push({ t: k, o: it.o, h: it.h, l: it.l, c: it.c });
+  }
+  return out.filter(c => c.t > from - R.bucket);
 }
 
 async function refreshFx() {
@@ -264,14 +331,16 @@ const shown = { code: null, price: null };
 function render() {
   const code = state.view, A = ASSETS[code], a = state.assets[code], L = live[code];
   const h = a.history;
-  const price = L.price ?? (h.length ? h[h.length - 1].p : null);
+  const R = RANGES[state.settings.range];
+  const series = buildSeries(code);
+  const price = L.price ?? (h.length ? h[h.length - 1].p : series.length ? series[series.length - 1].c : null);
 
   // Pestañas
   document.querySelectorAll('.assets button').forEach(b => {
     const c = b.dataset.asset;
     b.classList.toggle('active', c === code);
     b.setAttribute('aria-selected', c === code);
-    const pc = live[c].price ?? (state.assets[c].history.slice(-1)[0] || {}).p;
+    const pc = live[c].price ?? (state.assets[c].history.slice(-1)[0] || {}).p ?? (buildSeries(c).slice(-1)[0] || {}).c;
     $('tab-' + c).textContent = pc ? fmt(c, pc) : '—';
   });
 
@@ -298,13 +367,11 @@ function render() {
   }
   shown.code = code; shown.price = price;
 
-  // Variación: 24 h (o desde el primer dato disponible)
+  // Variación en el periodo del gráfico
+  const short = series.length && series[0].t > Date.now() - R.ms + 2 * R.bucket;
   let ref = null, refLabel = '';
-  if (code === 'BTC' && L.open24) { ref = L.open24; refLabel = 'en 24 h'; }
-  else if (h.length) {
-    ref = h[0].p;
-    refLabel = Date.now() - h[0].t > DAY_MS - 3600_000 ? 'en 24 h' : 'desde las ' + hhmm(h[0].t);
-  }
+  if (code === 'BTC' && state.settings.range === '1D' && L.open24) { ref = L.open24; refLabel = R.label; }
+  else if (series.length) { ref = series[0].o; refLabel = short ? 'desde ' + since(series[0].t) : R.label; }
   const ch = $('change');
   if (price != null && ref) {
     const pc = (price - ref) / ref * 100;
@@ -314,10 +381,11 @@ function render() {
   } else { ch.textContent = '—'; ch.className = 'chip'; $('changeLabel').textContent = ''; }
 
   // Pie del gráfico
-  const ps = h.map(x => x.p);
-  $('min').textContent = ps.length ? fmt(code, Math.min(...ps), false) : '—';
-  $('max').textContent = ps.length ? fmt(code, Math.max(...ps), false) : '—';
-  $('rangeLabel').textContent = h.length ? (Date.now() - h[0].t > DAY_MS - 3600_000 ? 'Últimas 24 h' : 'Desde las ' + hhmm(h[0].t)) : '';
+  $('min').textContent = series.length ? fmt(code, Math.min(...series.map(c => c.l)), false) : '—';
+  $('max').textContent = series.length ? fmt(code, Math.max(...series.map(c => c.h)), false) : '—';
+  $('rangeLabel').textContent = series.length ? (short ? 'Desde ' + since(series[0].t) : R.foot) : '';
+  setSeg('rangeSeg', state.settings.range);
+  setSeg('typeSeg', state.settings.chart);
 
   // Avisos del activo
   $('alertsTitle').textContent = 'Avisos del ' + A.name;
@@ -328,6 +396,7 @@ function render() {
   setSeg('unitSeg', state.settings.unit);
 
   renderAlerts();
+  renderBackground();
   updateNotifyBtn();
   drawChart();
 }
@@ -364,8 +433,8 @@ function renderAlerts() {
   }
 }
 
-// ---- Gráfico ----
-let chartGeom = null, hoverX = null;
+// ---- Gráfico (línea o velas japonesas) ----
+let hoverX = null;
 function drawChart() {
   const code = state.view, a = state.assets[code];
   const c = $('chart'), ctx = c.getContext('2d');
@@ -377,69 +446,87 @@ function drawChart() {
   ctx.clearRect(0, 0, w, H);
   const css = getComputedStyle(document.documentElement);
   const col = n => css.getPropertyValue(n).trim();
+  const tip = $('tip');
 
-  const pts = a.history;
-  if (pts.length < 2) {
-    chartGeom = null;
+  const S = buildSeries(code);
+  const candles = state.settings.chart === 'candles';
+  if (S.length < 2) {
+    tip.hidden = true;
     ctx.fillStyle = col('--muted');
     ctx.font = '13px -apple-system, system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('El gráfico se irá dibujando en directo…', w / 2, H / 2);
+    const msg = code === 'XAU' && state.settings.range !== '1D'
+      ? ['Aún no hay historial del oro para este periodo.', 'Se irá llenando con el vigilante en segundo plano.']
+      : ['El gráfico se irá dibujando en directo…'];
+    msg.forEach((m, i) => ctx.fillText(m, w / 2, H / 2 + (i - (msg.length - 1) / 2) * 18));
     return;
   }
-  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+
   let lo = Infinity, hi = -Infinity;
-  for (const p of pts) { if (p.p < lo) lo = p.p; if (p.p > hi) hi = p.p; }
+  for (const k of S) {
+    lo = Math.min(lo, candles ? k.l : k.c); hi = Math.max(hi, candles ? k.h : k.c);
+  }
   if (hi - lo < hi * 1e-5) { lo -= hi * 5e-5; hi += hi * 5e-5; }
   const padX = 16, top = 22, bottom = 10;
-  const x = t => padX + (t - t0) / Math.max(1, t1 - t0) * (w - 2 * padX);
+  const slot = (w - 2 * padX) / S.length;
+  const x = i => padX + slot * (i + 0.5);
   const y = v => top + (hi - v) / (hi - lo) * (H - top - bottom);
-  chartGeom = { pts, x, y, w, H, padX };
+  const upCol = col('--up'), downCol = col('--down');
+  const trendCol = S[S.length - 1].c >= S[0].o ? upCol : downCol;
 
-  const up = pts[pts.length - 1].p >= pts[0].p;
-  const line = col(up ? '--up' : '--down');
-
-  // Línea de referencia (inicio del periodo)
-  ctx.strokeStyle = col('--line'); ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
-  ctx.beginPath(); ctx.moveTo(padX, y(pts[0].p)); ctx.lineTo(w - padX, y(pts[0].p)); ctx.stroke();
-
-  // Límite "si baja de"
+  // Referencia (apertura del periodo) y límite "si baja de"
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = col('--line'); ctx.setLineDash([2, 4]);
+  ctx.beginPath(); ctx.moveTo(padX, y(S[0].o)); ctx.lineTo(w - padX, y(S[0].o)); ctx.stroke();
   if (a.useBelow && a.belowUsd >= lo && a.belowUsd <= hi) {
-    ctx.strokeStyle = col('--down'); ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = downCol; ctx.setLineDash([5, 4]);
     ctx.beginPath(); ctx.moveTo(padX, y(a.belowUsd)); ctx.lineTo(w - padX, y(a.belowUsd)); ctx.stroke();
   }
   ctx.setLineDash([]);
 
-  // Área y línea
-  const grad = ctx.createLinearGradient(0, top, 0, H);
-  grad.addColorStop(0, line + '33'); grad.addColorStop(1, line + '00');
-  ctx.beginPath();
-  pts.forEach((p, i) => (i ? ctx.lineTo(x(p.t), y(p.p)) : ctx.moveTo(x(p.t), y(p.p))));
-  ctx.lineTo(x(t1), H); ctx.lineTo(x(t0), H); ctx.closePath();
-  ctx.fillStyle = grad; ctx.fill();
-  ctx.beginPath();
-  pts.forEach((p, i) => (i ? ctx.lineTo(x(p.t), y(p.p)) : ctx.moveTo(x(p.t), y(p.p))));
-  ctx.strokeStyle = line; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
-
-  // Punto actual
-  const lx = x(t1), ly = y(pts[pts.length - 1].p);
-  ctx.fillStyle = line + '33'; ctx.beginPath(); ctx.arc(lx, ly, 8, 0, 7); ctx.fill();
-  ctx.fillStyle = line; ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, 7); ctx.fill();
+  if (candles) {
+    const bw = Math.max(1, Math.min(14, slot * 0.64));
+    S.forEach((k, i) => {
+      const cx = Math.round(x(i)) + 0.5, colr = k.c >= k.o ? upCol : downCol;
+      ctx.strokeStyle = colr; ctx.fillStyle = colr; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, y(k.h)); ctx.lineTo(cx, y(k.l)); ctx.stroke();
+      const y1 = y(Math.max(k.o, k.c)), y2 = y(Math.min(k.o, k.c));
+      ctx.fillRect(cx - bw / 2, y1, bw, Math.max(1, y2 - y1));
+    });
+    // Precio actual
+    const ly = y(S[S.length - 1].c);
+    ctx.strokeStyle = trendCol; ctx.setLineDash([1, 3]);
+    ctx.beginPath(); ctx.moveTo(padX, ly); ctx.lineTo(w - padX, ly); ctx.stroke();
+    ctx.setLineDash([]);
+  } else {
+    const grad = ctx.createLinearGradient(0, top, 0, H);
+    grad.addColorStop(0, trendCol + '33'); grad.addColorStop(1, trendCol + '00');
+    const path = () => { ctx.beginPath(); S.forEach((k, i) => (i ? ctx.lineTo(x(i), y(k.c)) : ctx.moveTo(x(i), y(k.c)))); };
+    path(); ctx.lineTo(x(S.length - 1), H); ctx.lineTo(x(0), H); ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+    path(); ctx.strokeStyle = trendCol; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    const lx = x(S.length - 1), ly = y(S[S.length - 1].c);
+    ctx.fillStyle = trendCol + '33'; ctx.beginPath(); ctx.arc(lx, ly, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = trendCol; ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, 7); ctx.fill();
+  }
 
   // Cursor táctil
-  const tip = $('tip');
   if (hoverX == null) { tip.hidden = true; return; }
-  const tx = t0 + (hoverX - padX) / (w - 2 * padX) * (t1 - t0);
-  let best = pts[0];
-  for (const p of pts) if (Math.abs(p.t - tx) < Math.abs(best.t - tx)) best = p;
-  const bx = x(best.t), by = y(best.p);
+  const i = Math.max(0, Math.min(S.length - 1, Math.floor((hoverX - padX) / slot)));
+  const k = S[i], bx = x(i);
   ctx.strokeStyle = col('--muted'); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(bx, top - 6); ctx.lineTo(bx, H); ctx.stroke();
-  ctx.fillStyle = col('--surface'); ctx.strokeStyle = line; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, 7); ctx.fill(); ctx.stroke();
+  if (!candles) {
+    ctx.fillStyle = col('--surface'); ctx.strokeStyle = trendCol; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(bx, y(k.c), 4.5, 0, 7); ctx.fill(); ctx.stroke();
+  }
+  const f = v => fmt(code, v, false);
   tip.hidden = false;
-  tip.textContent = fmt(code, best.p, false) + ' · ' + hhmm(best.t);
-  tip.style.left = Math.min(Math.max(bx, 70), w - 70) + 'px';
+  tip.textContent = candles
+    ? `${stamp(k.t)}\nAbre ${f(k.o)} · Cierra ${f(k.c)}\nMáx ${f(k.h)} · Mín ${f(k.l)}`
+    : `${f(k.c)} · ${stamp(k.t)}`;
+  const half = tip.offsetWidth / 2 + 4;
+  tip.style.left = Math.min(Math.max(bx, half), w - half) + 'px';
 }
 
 function bindChart() {
@@ -451,6 +538,50 @@ function bindChart() {
   c.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') leave(); });
   c.addEventListener('pointerleave', leave);
   c.addEventListener('pointercancel', leave);
+}
+
+// ---- Avisos con la app cerrada (vigilante de GitHub) ----
+function renderBackground() {
+  const el = $('bgStatus');
+  const t = remote.estado && Date.parse(remote.estado.actualizado);
+  if (!t) {
+    el.className = 'bg-status';
+    el.textContent = 'Aún no está activado. Sigue los pasos de abajo.';
+    return;
+  }
+  const mins = Math.round((Date.now() - t) / MIN);
+  const ok = mins <= 30;
+  el.className = 'bg-status ' + (ok ? 'ok' : 'warn');
+  el.textContent = (ok ? 'Activo · ' : 'Parado · ') + 'última comprobación ' +
+    (mins < 1 ? 'hace un momento' : mins < 60 ? `hace ${mins} min` : 'el ' + dayMonth(t) + ' a las ' + hhmm(t));
+}
+
+function configJson() {
+  const out = { moneda: state.settings.currency };
+  for (const [code, key] of [['XAU', 'oro'], ['BTC', 'bitcoin']]) {
+    const a = state.assets[code];
+    const below = a.useBelow && a.belowUsd ? fromUsd(code, a.belowUsd) : null;
+    out[key] = {
+      activo: !!(a.usePct || (a.useBelow && a.belowUsd)),
+      caida_porcentaje: a.usePct ? Number(a.pct) : null,
+      baja_de: below != null ? +below.toFixed(decimals(below)) : null,
+    };
+    if (ASSETS[code].hasUnit) out[key].unidad = state.settings.unit === 'g' ? 'gramo' : 'onza';
+  }
+  return JSON.stringify(out, null, 2) + '\n';
+}
+
+async function copyConfig() {
+  const txt = configJson(), btn = $('copyCfg');
+  let ok = false;
+  try { await navigator.clipboard.writeText(txt); ok = true; } catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.append(ta); ta.select();
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove();
+  }
+  btn.textContent = ok ? '✓ Copiado. Ahora pégalo en GitHub' : 'No se pudo copiar';
+  setTimeout(() => { btn.textContent = 'Copiar mis avisos'; }, 4000);
 }
 
 // ---- Notificaciones y pantalla ----
@@ -540,10 +671,22 @@ function bind() {
   });
   $('clearBtn').addEventListener('click', () => { state.alerts = []; save(true); render(); });
 
+  $('rangeSeg').addEventListener('click', e => {
+    const v = e.target.closest('button')?.dataset.v; if (!v) return;
+    s.range = v; hoverX = null;
+    loadBtcCandles(v); save(true); render();
+  });
+  $('typeSeg').addEventListener('click', e => {
+    const v = e.target.closest('button')?.dataset.v; if (!v) return;
+    s.chart = v; save(true); render();
+  });
+  $('copyCfg').addEventListener('click', copyConfig);
+  $('editCfg').href = CONFIG_EDIT_URL;
+
   // Al volver a la app: actualizar todo al momento
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
-    pollGold(); connectBtc(); pollBtcFallback(); applyWake();
+    pollGold(); connectBtc(); pollBtcFallback(); applyWake(); loadRemote(); loadBtcCandles(state.settings.range);
   });
   window.addEventListener('online', () => { pollGold(); connectBtc(); });
   window.addEventListener('resize', drawChart);
@@ -559,8 +702,9 @@ render();
 refreshFx().then(() => { fillAssetForm(); render(); });
 pollGold();
 connectBtc();
-seedBtcHistory();
+loadBtcCandles(state.settings.range);
+loadRemote(true);
 setTimeout(pollBtcFallback, 4000);
 setInterval(() => { if (!document.hidden) { pollGold(); pollBtcFallback(); } }, POLL_MS);
-setInterval(() => { refreshFx(); scheduleRender(); }, 60_000);
+setInterval(() => { refreshFx(); loadRemote(); loadBtcCandles(state.settings.range); scheduleRender(); }, 60_000);
 applyWake();

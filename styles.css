@@ -43,3 +43,9 @@ button.secondary { background: var(--border); color: var(--text); }
 .alerts li:last-child { border-bottom: 0; }
 .alerts .t { color: var(--muted); font-size: .8rem; display: block; }
 .foot { text-align: center; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tab { flex: 1; background: var(--card); color: var(--text); border: 1px solid var(--border); }
+.tab small { display: block; font-weight: 400; color: var(--muted); font-size: .75rem; }
+.tab.active { background: var(--gold); color: #1d1a12; border-color: var(--gold); }
+.tab.active small { color: #1d1a12; }
+[hidden] { display: none !important; }

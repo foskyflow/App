@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Alerta Oro</title>
+  <title>Alerta Oro y Bitcoin</title>
   <meta name="theme-color" content="#1a1508">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -11,13 +11,18 @@
 </head>
 <body>
   <header>
-    <h1>🪙 Alerta Oro</h1>
+    <h1>🪙 Alerta Oro y ₿</h1>
     <span id="status" class="status">Cargando…</span>
   </header>
 
   <main>
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab" data-asset="XAU" role="tab">🪙 Oro <small id="tab-XAU"></small></button>
+      <button type="button" class="tab" data-asset="BTC" role="tab">₿ Bitcoin <small id="tab-BTC"></small></button>
+    </nav>
+
     <section class="card price-card">
-      <div class="label">Precio actual del oro</div>
+      <div class="label" id="priceLabel">Precio actual del oro</div>
       <div id="price" class="price">—</div>
       <div id="change" class="change"></div>
       <div id="updated" class="muted"></div>
@@ -29,12 +34,12 @@
     </section>
 
     <section class="card">
-      <h2>¿Cuándo te aviso?</h2>
+      <h2 id="settingsTitle">¿Cuándo te aviso?</h2>
       <form id="settings">
         <label class="check">
           <input type="checkbox" id="useBelow">
           Cuando el precio baje de
-          <input type="number" id="below" step="0.01" min="0" placeholder="p. ej. 2500">
+          <input type="number" id="below" step="0.01" min="0" placeholder="precio">
         </label>
         <label class="check">
           <input type="checkbox" id="usePct" checked>
@@ -50,7 +55,7 @@
               <option value="EUR">EUR (€)</option>
             </select>
           </label>
-          <label>Unidad
+          <label id="unitWrap">Unidad (oro)
             <select id="unit">
               <option value="oz">Onza troy</option>
               <option value="g">Gramo</option>
@@ -73,6 +78,7 @@
           <button type="button" id="notifyBtn">🔔 Activar notificaciones</button>
           <button type="button" id="resetBtn" class="secondary">Reiniciar máximo</button>
         </div>
+        <p class="muted small">Oro y bitcoin se vigilan a la vez; cada uno tiene sus propios avisos.</p>
       </form>
     </section>
 
@@ -82,7 +88,7 @@
     </section>
 
     <p class="muted small foot">
-      Datos: gold-api.com (USD/onza) · Cambio: frankfurter.dev. La app avisa mientras esté abierta
+      Datos: gold-api.com (oro y bitcoin en USD) · Cambio: frankfurter.dev. La app avisa mientras esté abierta
       (puedes dejarla en segundo plano). No es asesoramiento financiero.
     </p>
   </main>

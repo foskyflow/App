@@ -1,12 +1,12 @@
-# 🪙 Alerta Oro
+# 🪙 Alerta Oro y Bitcoin
 
-App web (instalable en el móvil como PWA) que vigila el precio del oro y te avisa cuando baja.
+App web (instalable en el móvil como PWA) que vigila el precio del oro y del bitcoin y te avisa cuando bajan. Los dos se vigilan a la vez, cada uno con sus propios avisos (pestañas Oro / Bitcoin).
 
 ## Qué hace
-- Muestra el precio actual del oro en **USD o EUR**, por **onza troy o gramo**, con un gráfico de la sesión.
+- Muestra el precio actual en **USD o EUR** (el oro, por **onza troy o gramo**), con un gráfico de la sesión.
 - Te avisa (notificación del sistema + sonido) cuando:
   - el precio **baja de un valor** que tú eliges, y/o
-  - el precio **cae un X %** desde el máximo reciente (por defecto 1 %).
+  - el precio **cae un X %** desde el máximo reciente (por defecto 1 % en el oro y 3 % en el bitcoin, que se mueve más).
 - Guarda tus ajustes y el historial de avisos en el navegador.
 
 ## Cómo usarla
@@ -22,5 +22,5 @@ App web (instalable en el móvil como PWA) que vigila el precio del oro y te avi
 
 ## Limitaciones
 - Avisa **mientras la app esté abierta** (pestaña o app instalada). Para avisos con la app cerrada haría falta un pequeño servidor con *push*.
-- Datos: [gold-api.com](https://gold-api.com) (precio spot XAU en USD/onza) y [frankfurter.dev](https://frankfurter.dev) (cambio USD→EUR).
+- Datos: [gold-api.com](https://gold-api.com) (oro XAU en USD/onza y bitcoin BTC en USD) y [frankfurter.dev](https://frankfurter.dev) (cambio USD→EUR).
 - No es asesoramiento financiero.

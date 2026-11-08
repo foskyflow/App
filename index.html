@@ -44,6 +44,19 @@
         <canvas id="chart" aria-label="Gráfico de precio"></canvas>
         <div id="tip" class="tip" hidden></div>
       </div>
+      <div class="chart-ctrl">
+        <div class="seg small" id="rangeSeg">
+          <button type="button" data-v="1D">1D</button><button type="button" data-v="1S">1S</button><button type="button" data-v="1M">1M</button><button type="button" data-v="6M">6M</button>
+        </div>
+        <div class="seg small" id="typeSeg">
+          <button type="button" data-v="candles" aria-label="Velas japonesas">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 1v3M4 11v4M12 3v2M12 10v3" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="4" width="4" height="7" rx="1" fill="currentColor"/><rect x="10" y="5" width="4" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            Velas</button>
+          <button type="button" data-v="line" aria-label="Línea">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 12l4-5 3 3 4-6 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Línea</button>
+        </div>
+      </div>
       <div class="chart-foot">
         <span id="rangeLabel"></span>
         <span>Mín <b id="min">—</b> · Máx <b id="max">—</b></span>
@@ -66,6 +79,22 @@
         <div class="field wide"><input type="number" id="below" inputmode="decimal" step="any" min="0" placeholder="Precio"><span id="belowUnit">$</span></div>
       </div>
       <button type="button" id="resetBtn" class="link">Empezar a contar la caída desde ahora</button>
+    </section>
+
+    <section class="card">
+      <h2>Avisos con la app cerrada</h2>
+      <div id="bgStatus" class="bg-status"></div>
+      <p class="muted small">
+        Un vigilante en GitHub mira los precios cada 5 minutos y te avisa en la app <b>ntfy</b>
+        aunque esta app esté cerrada. Usa los avisos guardados en el archivo <code>avisos.json</code>.
+      </p>
+      <ol class="steps small">
+        <li>Ajusta arriba tus avisos de oro y bitcoin.</li>
+        <li>Pulsa <b>Copiar mis avisos</b>.</li>
+        <li>Abre <code>avisos.json</code> en GitHub, borra todo, pega y pulsa <b>Commit changes</b>.</li>
+      </ol>
+      <button type="button" id="copyCfg" class="primary">Copiar mis avisos</button>
+      <a id="editCfg" class="link block" target="_blank" rel="noopener">Abrir avisos.json en GitHub →</a>
     </section>
 
     <section class="card">
@@ -106,7 +135,7 @@
 
     <p class="foot">
       Bitcoin en directo desde Coinbase · Oro desde gold-api.com cada 10 s · Cambio de moneda: frankfurter.dev.<br>
-      Funciona mientras la app está abierta. No es asesoramiento financiero.
+      Avisos con la app cerrada: GitHub Actions + ntfy. No es asesoramiento financiero.
     </p>
   </div>
 

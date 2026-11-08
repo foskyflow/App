@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alerta Oro</title>
+  <meta name="theme-color" content="#1a1508">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>🪙 Alerta Oro</h1>
+    <span id="status" class="status">Cargando…</span>
+  </header>
+
+  <main>
+    <section class="card price-card">
+      <div class="label">Precio actual del oro</div>
+      <div id="price" class="price">—</div>
+      <div id="change" class="change"></div>
+      <div id="updated" class="muted"></div>
+      <canvas id="chart" height="160" aria-label="Gráfico de precio reciente"></canvas>
+      <div class="row small">
+        <span>Mín. sesión: <b id="min">—</b></span>
+        <span>Máx. sesión: <b id="max">—</b></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>¿Cuándo te aviso?</h2>
+      <form id="settings">
+        <label class="check">
+          <input type="checkbox" id="useBelow">
+          Cuando el precio baje de
+          <input type="number" id="below" step="0.01" min="0" placeholder="p. ej. 2500">
+        </label>
+        <label class="check">
+          <input type="checkbox" id="usePct" checked>
+          Cuando caiga un
+          <input type="number" id="pct" step="0.1" min="0.1" value="1">
+          % desde el máximo reciente
+        </label>
+
+        <div class="grid">
+          <label>Moneda
+            <select id="currency">
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+            </select>
+          </label>
+          <label>Unidad
+            <select id="unit">
+              <option value="oz">Onza troy</option>
+              <option value="g">Gramo</option>
+            </select>
+          </label>
+          <label>Comprobar cada
+            <select id="interval">
+              <option value="30">30 s</option>
+              <option value="60" selected>1 min</option>
+              <option value="300">5 min</option>
+              <option value="900">15 min</option>
+            </select>
+          </label>
+          <label class="check inline">
+            <input type="checkbox" id="sound" checked> Sonido
+          </label>
+        </div>
+
+        <div class="buttons">
+          <button type="button" id="notifyBtn">🔔 Activar notificaciones</button>
+          <button type="button" id="resetBtn" class="secondary">Reiniciar máximo</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Avisos</h2>
+      <ul id="alerts" class="alerts"><li class="muted">Aún no hay avisos.</li></ul>
+    </section>
+
+    <p class="muted small foot">
+      Datos: gold-api.com (USD/onza) · Cambio: frankfurter.dev. La app avisa mientras esté abierta
+      (puedes dejarla en segundo plano). No es asesoramiento financiero.
+    </p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

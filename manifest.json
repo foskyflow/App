@@ -1,7 +1,7 @@
 {
-  "name": "Alerta Oro",
+  "name": "Alerta Oro y Bitcoin",
   "short_name": "Alerta Oro",
-  "description": "Te avisa cuando baja el precio del oro",
+  "description": "Te avisa cuando bajan el oro o el bitcoin",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#14110a",

@@ -2,96 +2,113 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Alerta Oro y Bitcoin</title>
-  <meta name="theme-color" content="#1a1508">
+  <meta name="theme-color" content="#0e0d0b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Alerta Oro">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <h1>🪙 Alerta Oro y ₿</h1>
-    <span id="status" class="status">Cargando…</span>
-  </header>
+  <div class="app">
+    <header class="top">
+      <div class="brand">Alerta</div>
+      <div id="live" class="live"><i></i><span>Conectando…</span></div>
+    </header>
 
-  <main>
-    <nav class="tabs" role="tablist">
-      <button type="button" class="tab" data-asset="XAU" role="tab">🪙 Oro <small id="tab-XAU"></small></button>
-      <button type="button" class="tab" data-asset="BTC" role="tab">₿ Bitcoin <small id="tab-BTC"></small></button>
+    <nav class="seg assets" role="tablist">
+      <button type="button" data-asset="XAU" role="tab">
+        <span class="seg-name">Oro</span><span class="seg-price" id="tab-XAU">—</span>
+      </button>
+      <button type="button" data-asset="BTC" role="tab">
+        <span class="seg-name">Bitcoin</span><span class="seg-price" id="tab-BTC">—</span>
+      </button>
     </nav>
 
-    <section class="card price-card">
-      <div class="label" id="priceLabel">Precio actual del oro</div>
+    <section class="hero">
+      <div class="hero-head">
+        <span id="assetName" class="asset-name">Oro</span>
+        <span id="market" class="market"></span>
+      </div>
       <div id="price" class="price">—</div>
-      <div id="change" class="change"></div>
-      <div id="updated" class="muted"></div>
-      <canvas id="chart" height="160" aria-label="Gráfico de precio reciente"></canvas>
-      <div class="row small">
-        <span>Mín. sesión: <b id="min">—</b></span>
-        <span>Máx. sesión: <b id="max">—</b></span>
+      <div class="hero-sub">
+        <span id="change" class="chip">—</span>
+        <span id="changeLabel" class="muted"></span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart" aria-label="Gráfico de precio"></canvas>
+        <div id="tip" class="tip" hidden></div>
+      </div>
+      <div class="chart-foot">
+        <span id="rangeLabel"></span>
+        <span>Mín <b id="min">—</b> · Máx <b id="max">—</b></span>
       </div>
     </section>
 
     <section class="card">
-      <h2 id="settingsTitle">¿Cuándo te aviso?</h2>
-      <form id="settings">
-        <label class="check">
-          <input type="checkbox" id="useBelow">
-          Cuando el precio baje de
-          <input type="number" id="below" step="0.01" min="0" placeholder="precio">
-        </label>
-        <label class="check">
-          <input type="checkbox" id="usePct" checked>
-          Cuando caiga un
-          <input type="number" id="pct" step="0.1" min="0.1" value="1">
-          % desde el máximo reciente
-        </label>
-
-        <div class="grid">
-          <label>Moneda
-            <select id="currency">
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-            </select>
-          </label>
-          <label id="unitWrap">Unidad (oro)
-            <select id="unit">
-              <option value="oz">Onza troy</option>
-              <option value="g">Gramo</option>
-            </select>
-          </label>
-          <label>Comprobar cada
-            <select id="interval">
-              <option value="30">30 s</option>
-              <option value="60" selected>1 min</option>
-              <option value="300">5 min</option>
-              <option value="900">15 min</option>
-            </select>
-          </label>
-          <label class="check inline">
-            <input type="checkbox" id="sound" checked> Sonido
-          </label>
+      <h2 id="alertsTitle">Avisos</h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="usePct"><span></span></label>
+        <div class="row-text">
+          <div>Si cae un</div>
+          <div class="muted small" id="peakInfo"></div>
         </div>
-
-        <div class="buttons">
-          <button type="button" id="notifyBtn">🔔 Activar notificaciones</button>
-          <button type="button" id="resetBtn" class="secondary">Reiniciar máximo</button>
-        </div>
-        <p class="muted small">Oro y bitcoin se vigilan a la vez; cada uno tiene sus propios avisos.</p>
-      </form>
+        <div class="field"><input type="number" id="pct" inputmode="decimal" step="0.1" min="0.1"><span>%</span></div>
+      </div>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="useBelow"><span></span></label>
+        <div class="row-text"><div>Si baja de</div></div>
+        <div class="field wide"><input type="number" id="below" inputmode="decimal" step="any" min="0" placeholder="Precio"><span id="belowUnit">$</span></div>
+      </div>
+      <button type="button" id="resetBtn" class="link">Empezar a contar la caída desde ahora</button>
     </section>
 
     <section class="card">
-      <h2>Avisos</h2>
-      <ul id="alerts" class="alerts"><li class="muted">Aún no hay avisos.</li></ul>
+      <h2>Ajustes</h2>
+      <div class="row">
+        <div class="row-text">Moneda</div>
+        <div class="seg small" id="currencySeg">
+          <button type="button" data-v="EUR">€</button><button type="button" data-v="USD">$</button>
+        </div>
+      </div>
+      <div class="row" id="unitRow">
+        <div class="row-text">Oro por</div>
+        <div class="seg small" id="unitSeg">
+          <button type="button" data-v="oz">Onza</button><button type="button" data-v="g">Gramo</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-text">Sonido en los avisos</div>
+        <label class="switch"><input type="checkbox" id="sound"><span></span></label>
+      </div>
+      <div class="row" id="wakeRow">
+        <div class="row-text">
+          <div>Mantener pantalla encendida</div>
+          <div class="muted small">Para no perder avisos mientras la miras</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="wake"><span></span></label>
+      </div>
+      <button type="button" id="notifyBtn" class="primary">Activar notificaciones</button>
     </section>
 
-    <p class="muted small foot">
-      Datos: gold-api.com (oro y bitcoin en USD) · Cambio: frankfurter.dev. La app avisa mientras esté abierta
-      (puedes dejarla en segundo plano). No es asesoramiento financiero.
+    <section class="card">
+      <div class="card-head">
+        <h2>Últimos avisos</h2>
+        <button type="button" id="clearBtn" class="link small">Borrar</button>
+      </div>
+      <ul id="alerts" class="alerts"></ul>
+    </section>
+
+    <p class="foot">
+      Bitcoin en directo desde Coinbase · Oro desde gold-api.com cada 10 s · Cambio de moneda: frankfurter.dev.<br>
+      Funciona mientras la app está abierta. No es asesoramiento financiero.
     </p>
-  </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

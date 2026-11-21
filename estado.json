@@ -1,0 +1,14 @@
+{
+ "tasaEUR": 0.90992,
+ "XAU": {
+  "pico": 3571,
+  "armado": true,
+  "limiteUsd": null
+ },
+ "BTC": {
+  "pico": 59863.65,
+  "armado": true,
+  "limiteUsd": null
+ },
+ "actualizado": "2026-11-21T16:27:42.861Z"
+}
